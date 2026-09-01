@@ -230,7 +230,8 @@ def read_report_metadata(
 # ---------------------------------------------------------------------------
 
 def build_pdf_bytes(metadata, series, values, depth_scale, time_scale, qa_scale,
-                     single_color=None) -> bytes:
+                     single_color=None, highlight_last_n_cycles=None,
+                     highlight_color="#ff0000") -> bytes:
     buf = io.BytesIO()
     build_pdf(
         output_path=buf,
@@ -243,6 +244,8 @@ def build_pdf_bytes(metadata, series, values, depth_scale, time_scale, qa_scale,
         qa_scale=qa_scale,
         cycles=series.cycles,
         single_color=single_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
     return buf.getvalue()
 
@@ -278,12 +281,16 @@ def _style_axes(ax) -> None:
 
 def render_plot(container, x_values, y_values, cycles, xlabel, ylabel, title,
                 scale: PlotAxisScale, invert_y: bool, legend_kwargs=None,
-                single_color: Optional[str] = None) -> None:
+                single_color: Optional[str] = None,
+                highlight_last_n_cycles: Optional[int] = None,
+                highlight_color: str = "#ff0000") -> None:
     fig, ax = plt.subplots(figsize=(5.2, 4.3), dpi=130)
     _lkw = legend_kwargs if legend_kwargs is not None else {}
     plot_series_by_cycle(ax, x_values, y_values, cycles, linewidth=1.2,
                          show_legend=True, legend_kwargs=_lkw,
-                         single_color=single_color)
+                         single_color=single_color,
+                         highlight_last_n_cycles=highlight_last_n_cycles,
+                         highlight_color=highlight_color)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -378,18 +385,37 @@ with st.sidebar:
     )
     st.divider()
     st.subheader("Trace colour")
-    single_color_mode = st.checkbox(
-        "Use one colour for all traces",
-        key="single_color_mode",
-        help="A high cycle count otherwise gives every cycle its own "
-             "colour, which can look busy. Check this to draw the whole "
-             "trace in one colour instead (applies to the live preview and "
-             "the exported PDF).",
+    color_mode = st.radio(
+        "Trace colour mode",
+        ["Cycle-colour-coded", "Single colour", "Highlight last N cycles"],
+        key="trace_color_mode",
+        label_visibility="collapsed",
+        help="Cycle-colour-coded gives every cycle its own colour (can "
+             "look busy on a high cycle count). Single colour draws the "
+             "whole trace in one colour. Highlight last N cycles draws the "
+             "whole trace in a base colour with only the final remolding "
+             "cycles redrawn on top in a bright colour, so the peak "
+             "(initial push) and remolded tail both stand out at a glance.",
     )
     trace_color = None
-    if single_color_mode:
+    highlight_last_n_cycles = None
+    highlight_color = "#ff0000"
+    if color_mode == "Single colour":
         trace_color = st.color_picker(
             "Trace colour", value="#1f4e79", key="single_color_value",
+        )
+    elif color_mode == "Highlight last N cycles":
+        c1, c2 = st.columns(2)
+        trace_color = c1.color_picker(
+            "Base colour", value="#1f4e79", key="highlight_base_color",
+        )
+        highlight_color = c2.color_picker(
+            "Highlight colour", value="#ff0000", key="highlight_tail_color",
+        )
+        highlight_last_n_cycles = st.number_input(
+            "Number of final cycles to highlight",
+            min_value=1, max_value=50, value=5, step=1,
+            key="highlight_last_n_cycles",
         )
     st.divider()
     st.subheader("Axis scales")
@@ -511,11 +537,15 @@ plot_col_1, plot_col_2 = st.columns(2)
 _title_label = re.sub(r'\s*\([^)]*\)', '', res_label).strip()
 render_plot(plot_col_1, values, series.depth_m, series.cycles,
             res_label, "Depth (m)", f"{_title_label} vs Depth",
-            depth_scale, invert_y=True, single_color=trace_color)
+            depth_scale, invert_y=True, single_color=trace_color,
+            highlight_last_n_cycles=highlight_last_n_cycles,
+            highlight_color=highlight_color)
 render_plot(plot_col_2, series.elapsed_s, values, series.cycles,
             "Time (s)", res_label, f"{_title_label} vs Time",
             time_scale, invert_y=False,
-            legend_kwargs=dict(loc="upper right"), single_color=trace_color)
+            legend_kwargs=dict(loc="upper right"), single_color=trace_color,
+            highlight_last_n_cycles=highlight_last_n_cycles,
+            highlight_color=highlight_color)
 
 # ---- Exports ----------------------------------------------------------------
 _company_logo = company_logo_file.getvalue() if company_logo_file is not None else _DEFAULT_COMPANY_LOGO
@@ -528,6 +558,8 @@ try:
     pdf_bytes = build_pdf_bytes(
         metadata, series, values, depth_scale, time_scale, qa_scale,
         single_color=trace_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
 except Exception as exc:
     st.error(f"PDF export failed: {exc}")

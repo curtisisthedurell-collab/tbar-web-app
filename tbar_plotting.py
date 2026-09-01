@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence
 
+from matplotlib.lines import Line2D
+
 from tbr_calc import CycleSegment
 
 # Distinct colors for "Initial" and "Final" (bookend segments).
@@ -78,6 +80,8 @@ def plot_series_by_cycle(
     show_legend: bool = True,
     legend_kwargs: Optional[dict] = None,
     single_color: Optional[str] = None,
+    highlight_last_n_cycles: Optional[int] = None,
+    highlight_color: str = "#ff0000",
 ) -> None:
     """Plot ``x_values``/``y_values`` on ``ax`` as a series of colored
     segments, one per entry in ``cycles`` (see :func:`tbr_calc.detect_cycles`),
@@ -93,7 +97,26 @@ def plot_series_by_cycle(
     the entire trace is drawn as one line in that color with no legend
     (a high cycle-count test can otherwise look "manic" with a different
     color per cycle).
+
+    ``highlight_last_n_cycles``, when given (and greater than zero), takes
+    precedence over both of the above: the whole trace is drawn in
+    ``single_color`` (or a default) as a base layer, then the last N "cycle"
+    segments (the final remolding pull/push round trips) are redrawn on top
+    in ``highlight_color``, slightly thicker, so the peak (initial push) and
+    the remolded/softened tail are both visible at a glance against a busy
+    stack of overlapping traces.
     """
+    if highlight_last_n_cycles is not None and highlight_last_n_cycles > 0:
+        _plot_with_highlighted_tail(
+            ax, x_values, y_values, cycles, linewidth,
+            base_color=single_color or INITIAL_COLOR,
+            highlight_color=highlight_color,
+            n=highlight_last_n_cycles,
+            show_legend=show_legend,
+            legend_kwargs=legend_kwargs,
+        )
+        return
+
     if single_color is not None:
         pts = [
             (x, y) for x, y in zip(x_values, y_values)
@@ -135,6 +158,67 @@ def plot_series_by_cycle(
         if lbl not in labels_seen:
             handles.append(line)
             labels_seen.append(lbl)
+
+    if show_legend and handles:
+        kwargs = dict(
+            loc="best", fontsize=7, framealpha=0.9, ncol=1,
+            title=None, borderpad=0.6, handlelength=1.6,
+        )
+        if legend_kwargs:
+            kwargs.update(legend_kwargs)
+        ax.legend(handles, labels_seen, **kwargs)
+
+
+def _plot_with_highlighted_tail(
+    ax,
+    x_values: Sequence[Optional[float]],
+    y_values: Sequence[float],
+    cycles: List[CycleSegment],
+    linewidth: float,
+    base_color: str,
+    highlight_color: str,
+    n: int,
+    show_legend: bool,
+    legend_kwargs: Optional[dict],
+) -> None:
+    """Draw the whole trace in ``base_color``, then redraw the last ``n``
+    "cycle" segments in ``highlight_color`` on top (thicker, higher
+    z-order) so they stand out from a stack of overlapping traces."""
+    base_pts = [
+        (x, y) for x, y in zip(x_values, y_values)
+        if x is not None and y is not None
+    ]
+    if base_pts:
+        bx = [p[0] for p in base_pts]
+        by = [p[1] for p in base_pts]
+        ax.plot(bx, by, color=base_color, linewidth=linewidth,
+                solid_capstyle="round", zorder=2)
+
+    cycle_segs = [seg for seg in cycles if seg.kind == "cycle"]
+    tail_segs = cycle_segs[-n:] if cycle_segs else []
+
+    handles = []
+    labels_seen = []
+    if tail_segs:
+        handles.append(Line2D([], [], color=base_color, linewidth=linewidth))
+        labels_seen.append("Trace")
+
+    for seg in tail_segs:
+        start = seg.start_idx
+        end = min(seg.end_idx + 1, len(x_values) - 1)  # +1 sample overlap
+        xs = x_values[start:end + 1]
+        ys = y_values[start:end + 1]
+        pts = [(x, y) for x, y in zip(xs, ys) if x is not None and y is not None]
+        if not pts:
+            continue
+        px = [p[0] for p in pts]
+        py = [p[1] for p in pts]
+        ax.plot(px, py, color=highlight_color, linewidth=linewidth * 1.4,
+                 solid_capstyle="round", zorder=5)
+
+    if tail_segs:
+        handles.append(Line2D([], [], color=highlight_color, linewidth=linewidth * 1.4))
+        labels_seen.append(f"Last {len(tail_segs)} cycle{'s' if len(tail_segs) != 1 else ''}")
 
     if show_legend and handles:
         kwargs = dict(
