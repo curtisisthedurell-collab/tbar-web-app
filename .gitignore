@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Local Streamlit secrets -- NEVER commit these (holds TBAR_PASSCODE).
+.streamlit/secrets.toml
+
+# Test artefacts
+_smoke_test_output.*
+
+# Real raw acquisition data used only for local manual testing -- not part
+# of the web app itself (the samples/ folder holds the actual test fixtures).
+BNW_CSE_12_BC_01 RAW/

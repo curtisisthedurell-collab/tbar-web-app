@@ -1,0 +1,10 @@
+# Dependencies for the Streamlit web app.
+#
+# Test-only dependency not listed here: PyMuPDF (imported as `fitz` by
+# test_smoke.py to validate the exported PDF's structure). Install it
+# separately (`pip install pymupdf`) before running the test suite.
+streamlit>=1.36
+numpy>=1.26
+matplotlib>=3.8
+reportlab>=4.2
+openpyxl>=3.1
