@@ -115,6 +115,8 @@ def _render_resistance_depth_png(
     height_in: float,
     cycles: Optional[List[CycleSegment]] = None,
     single_color: Optional[str] = None,
+    highlight_last_n_cycles: Optional[int] = None,
+    highlight_color: str = "#ff0000",
 ) -> bytes:
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
@@ -123,6 +125,8 @@ def _render_resistance_depth_png(
         linewidth=1.3, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="best", framealpha=0.92),
         single_color=single_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
     ax.set_xlabel(resistance_label)
     ax.set_ylabel("Depth (m)")
@@ -236,6 +240,8 @@ def _render_resistance_time_png(
     height_in: float,
     cycles: Optional[List[CycleSegment]] = None,
     single_color: Optional[str] = None,
+    highlight_last_n_cycles: Optional[int] = None,
+    highlight_color: str = "#ff0000",
 ) -> bytes:
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
@@ -244,6 +250,8 @@ def _render_resistance_time_png(
         linewidth=1.3, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="upper right", framealpha=0.92),
         single_color=single_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(resistance_label)
@@ -271,6 +279,8 @@ def _render_depth_time_png(
     height_in: float,
     cycles: Optional[List[CycleSegment]] = None,
     single_color: Optional[str] = None,
+    highlight_last_n_cycles: Optional[int] = None,
+    highlight_color: str = "#ff0000",
 ) -> bytes:
     """Depth (inverted y-axis) vs elapsed time.
     Uses the same cycle colour scheme as the resistance plots."""
@@ -281,6 +291,8 @@ def _render_depth_time_png(
         linewidth=1.3, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="best", framealpha=0.92),
         single_color=single_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
     ax.set_xlabel("Elapsed Time (s)")
     ax.set_ylabel("Depth (m)")
@@ -316,6 +328,8 @@ def build_pdf(
     cycles: Optional[List[CycleSegment]] = None,
     qa_scale: Optional[PlotAxisScale] = None,
     single_color: Optional[str] = None,
+    highlight_last_n_cycles: Optional[int] = None,
+    highlight_color: str = "#ff0000",
 ) -> None:
     """Build the landscape mini T-bar report PDF at ``output_path``.
 
@@ -325,10 +339,15 @@ def build_pdf(
     :func:`tbr_calc.detect_cycles`) drives the color-coded Initial/Cycle
     N/Final segments and legend on both plots, unless ``single_color`` is
     given, in which case every plot (including the page 2 QA plot) is drawn
-    as one uniform-color trace with no legend instead. ``qa_scale`` sets the
-    axis limits for the page 2 Depth vs Elapsed Time QA plot (defaults to
-    fully automatic if omitted). The PDF is a fixed lab record: all metadata
-    is drawn as plain text, not editable form fields.
+    as one uniform-color trace with no legend instead. If
+    ``highlight_last_n_cycles`` is also given, it applies only to the
+    resistance-vs-depth plot: that trace is drawn in ``single_color`` with
+    only the last N remolding cycles redrawn on top in ``highlight_color``
+    for at-a-glance peak/remolded comparison; the resistance-vs-time and QA
+    plots stay a solid ``single_color`` trace. ``qa_scale`` sets the axis
+    limits for the page 2 Depth vs Elapsed Time QA plot (defaults to fully
+    automatic if omitted). The PDF is a fixed lab record: all metadata is
+    drawn as plain text, not editable form fields.
     """
     if qa_scale is None:
         qa_scale = PlotAxisScale()
@@ -417,6 +436,8 @@ def build_pdf(
         depth_m, resistance_series, metadata.resistance_label, depth_scale,
         width_in=plot_w / 72.0, height_in=plot_h / 72.0, cycles=cycles,
         single_color=single_color,
+        highlight_last_n_cycles=highlight_last_n_cycles,
+        highlight_color=highlight_color,
     )
     time_png = _render_resistance_time_png(
         elapsed_s, resistance_series, metadata.resistance_label, time_scale,
