@@ -140,7 +140,7 @@ def seed_form_defaults(dataset, base_cal: CalibrationSettings) -> None:
     defaults = {
         "md_project": dataset.header_get("Project Name", "Project", default=""),
         "md_client": dataset.header_get("Client Name", "Client", default=""),
-        "md_location": dataset.header_get("Push Name", "Location", "Location ID", default=""),
+        "md_location": dataset.header_get("Location", default=""),
         "md_date": date_str,
         "md_operator": dataset.header_get("Operator", default=""),
         "md_comments": "",
