@@ -527,7 +527,7 @@ def build_pdf(
 
     c.setFont("Helvetica-Bold", 17)
     c.setFillColor(ACCENT_TEXT)
-    c.drawString(margin, page_h - band_h + 11, "PENETRATION QA")
+    c.drawString(margin, page_h - band_h + 11, "PENETRATION DEPTH")
 
     c.setFont("Helvetica-Bold", 11)
     c.setFillColor(HexColor("#1a3300"))
