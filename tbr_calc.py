@@ -43,6 +43,7 @@ Rod Diameter is user-editable and drives the overburden correction only.
 from __future__ import annotations
 
 import math
+import statistics
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -227,15 +228,70 @@ def detect_cycles(
 
 
 def compute_elapsed_seconds(timestamps) -> List[Optional[float]]:
-    """Elapsed time [s] from the first valid timestamp; None for missing."""
-    valid = [t for t in timestamps if t is not None]
-    if not valid:
-        return [None] * len(timestamps)
-    t0 = valid[0]
-    return [
-        (t - t0).total_seconds() if t is not None else None
-        for t in timestamps
+    """Elapsed time [s] from the first valid timestamp; None for missing.
+
+    The .cdf timestamp column only has whole-second resolution, but the
+    acquisition software samples much faster (commonly ~10 Hz), so several
+    consecutive rows share the same timestamp. Assigning them all the same
+    elapsed time produces a "staircase" depth-vs-time plot -- flat treads
+    and vertical risers -- even though the underlying signal changes
+    smoothly from sample to sample.
+
+    To recover the true sample spacing, consecutive rows sharing a
+    timestamp are treated as one "bin" and spread evenly across it at a
+    single nominal per-sample interval, derived (via median, so a handful
+    of outliers can't skew it) from every other bin in the file rather
+    than from that bin's own span to the next label. Real acquisitions
+    occasionally have a bin whose label is several seconds stale even
+    though the signal kept changing at the usual rate (a clock/logging
+    hiccup, not an actual pause) -- spacing that bin's few samples across
+    its own bogus multi-second span would smear them out and flatten the
+    curve right at that point. A bin with unusually many samples for the
+    nominal rate (more than would fit before the next label) falls back
+    to its own span so consecutive bins never overlap in time.
+    """
+    n = len(timestamps)
+    result: List[Optional[float]] = [None] * n
+
+    valid_idx = [i for i, t in enumerate(timestamps) if t is not None]
+    if not valid_idx:
+        return result
+
+    t0 = timestamps[valid_idx[0]]
+
+    # Group consecutive valid samples that share the same timestamp.
+    groups: List[List[int]] = []
+    for i in valid_idx:
+        if groups and timestamps[groups[-1][-1]] == timestamps[i]:
+            groups[-1].append(i)
+        else:
+            groups.append([i])
+
+    group_seconds = [(timestamps[g[0]] - t0).total_seconds() for g in groups]
+
+    spacing_samples = [
+        (group_seconds[gi + 1] - group_seconds[gi]) / len(groups[gi])
+        for gi in range(len(groups) - 1)
+        if len(groups[gi]) > 1 and group_seconds[gi + 1] > group_seconds[gi]
     ]
+    nominal_spacing = statistics.median(spacing_samples) if spacing_samples else 0.0
+
+    for gi, (indices, t_sec) in enumerate(zip(groups, group_seconds)):
+        n_g = len(indices)
+        spacing = nominal_spacing
+        if gi + 1 < len(groups):
+            dt = group_seconds[gi + 1] - t_sec
+            if dt <= 0:
+                spacing = 0.0
+            elif n_g > 1 and (n_g - 1) * spacing >= dt:
+                # More samples in this bin than the nominal rate can fit
+                # before the next label -- spread across its own span
+                # instead, to avoid overlapping the next bin.
+                spacing = dt / n_g
+        for k, idx in enumerate(indices):
+            result[idx] = t_sec + k * spacing
+
+    return result
 
 
 @dataclass

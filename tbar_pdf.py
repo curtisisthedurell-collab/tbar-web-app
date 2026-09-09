@@ -272,7 +272,6 @@ def _render_resistance_time_png(
 
 
 def _render_depth_time_png(
-    elapsed_s: Sequence[Optional[float]],
     depth_m: Sequence[float],
     scale: PlotAxisScale,
     width_in: float,
@@ -282,21 +281,31 @@ def _render_depth_time_png(
     highlight_last_n_cycles: Optional[int] = None,
     highlight_color: str = "#ff0000",
 ) -> bytes:
-    """Depth (inverted y-axis) vs elapsed time.
+    """Depth (inverted y-axis) vs data record number.
+
+    Record number (0, 1, 2, ...) rather than elapsed time is used for the
+    x-axis: this plot's purpose is to let the engineer visually inspect the
+    encoder trace for slip, dropout, or non-physical reversals, and the raw
+    .cdf timestamp column only has whole-second resolution while the logger
+    samples much faster -- deriving evenly-spaced sub-second times from it
+    is inherently an approximation and, when the source timestamps have a
+    hiccup, can visually distort the very trace this plot exists to check.
+    Record number has no such ambiguity: it's exactly what was recorded.
     Uses the same cycle colour scheme as the resistance plots."""
+    record_idx = list(range(len(depth_m)))
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
     plot_series_by_cycle(
-        ax, elapsed_s, depth_m, cycles or [],
+        ax, record_idx, depth_m, cycles or [],
         linewidth=1.3, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="best", framealpha=0.92),
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
         highlight_color=highlight_color,
     )
-    ax.set_xlabel("Elapsed Time (s)")
+    ax.set_xlabel("Data Record #")
     ax.set_ylabel("Depth (m)")
-    ax.set_title("Depth vs Elapsed Time", fontsize=10.5, pad=8)
+    ax.set_title("Depth vs Data Record", fontsize=10.5, pad=8)
     _style_axes(ax)
 
     if not scale.x_auto and scale.x_min is not None and scale.x_max is not None:
@@ -345,7 +354,7 @@ def build_pdf(
     only the last N remolding cycles redrawn on top in ``highlight_color``
     for at-a-glance peak/remolded comparison; the resistance-vs-time and QA
     plots stay a solid ``single_color`` trace. ``qa_scale`` sets the axis
-    limits for the page 2 Depth vs Elapsed Time QA plot (defaults to fully
+    limits for the page 2 Depth vs Data Record QA plot (defaults to fully
     automatic if omitted). The PDF is a fixed lab record: all metadata is
     drawn as plain text, not editable form fields.
     """
@@ -506,8 +515,8 @@ def build_pdf(
 
     # ====================================================================
     # Page 2: Depth Encoder QA
-    # Full-width depth-vs-time plot so the engineer can check the encoder
-    # trace for slip, dropout, or non-physical reversals.
+    # Full-width depth-vs-record-number plot so the engineer can check the
+    # encoder trace for slip, dropout, or non-physical reversals.
     # ====================================================================
 
     # Header band (same design language as page 1)
@@ -543,7 +552,7 @@ def build_pdf(
     qa_plot_w = page_w - 2 * margin
 
     qa_png = _render_depth_time_png(
-        elapsed_s, depth_m, qa_scale,
+        depth_m, qa_scale,
         width_in=qa_plot_w / 72.0,
         height_in=qa_plot_area_h / 72.0,
         cycles=cycles,

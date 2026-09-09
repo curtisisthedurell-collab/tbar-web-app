@@ -62,7 +62,10 @@ def main():
     # Max depth should match the hand-verified value for this sample file.
     assert approx(max(series.depth_m), 0.40240000000000004, tol=1e-9), max(series.depth_m)
     assert series.elapsed_s[0] == 0.0
-    assert series.elapsed_s[-1] == 51.0
+    # 450 samples span 48 whole-second bins at a robust nominal ~10 Hz rate
+    # (0.1s/sample); the last (partial, 8-sample) bin runs from 51.0s to
+    # 51.0 + 7*0.1 = 51.7s.
+    assert approx(series.elapsed_s[-1], 51.7), series.elapsed_s[-1]
     print("[OK] calc: depth zeroing / elapsed time match hand-verified values")
 
     # ---- Overburden correction / qn,T-bar / Su ---------------------------
@@ -147,7 +150,7 @@ def main():
     assert os.path.isfile(OUTPUT_PDF)
     print(f"[OK] pdf builder: wrote {OUTPUT_PDF} ({os.path.getsize(OUTPUT_PDF)} bytes)")
 
-    # A manual (non-auto) qa_scale for the page 2 Depth vs Elapsed Time plot
+    # A manual (non-auto) qa_scale for the page 2 Depth vs Data Record plot
     # must be accepted without error and still produce a valid two-page PDF
     # (qa_scale is optional -- the call above omitted it entirely, relying
     # on the auto default; this exercises the explicit-limits path).
@@ -160,7 +163,7 @@ def main():
         depth_scale=PlotAxisScale(),
         time_scale=PlotAxisScale(),
         qa_scale=PlotAxisScale(
-            x_auto=False, x_min=0.0, x_max=40.0,
+            x_auto=False, x_min=0.0, x_max=300.0,
             y_auto=False, y_min=0.0, y_max=0.3,
         ),
         cycles=series.cycles,

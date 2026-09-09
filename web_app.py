@@ -368,7 +368,7 @@ with st.sidebar:
         "company on the left, client on the right. PNG or JPG, any size."
     )
     company_logo_file = st.file_uploader(
-        "Your company logo", type=["png", "jpg", "jpeg"], key="logo_company"
+        "Company logo", type=["png", "jpg", "jpeg"], key="logo_company"
     )
     client_logo_file = st.file_uploader(
         "Client logo", type=["png", "jpg", "jpeg"], key="logo_client"
@@ -439,8 +439,8 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         c1.text_input("Min", key="ty_min")
         c2.text_input("Max", key="ty_max")
-    with st.expander("Depth vs Time (PDF page 2 QA plot)"):
-        st.caption("X: time  |  Y: depth (inverted)")
+    with st.expander("Depth vs Data Record (PDF page 2 QA plot)"):
+        st.caption("X: data record #  |  Y: depth (inverted)")
         st.checkbox("Auto X", value=True, key="qx_auto")
         c1, c2 = st.columns(2)
         c1.text_input("Min", key="qx_min")
