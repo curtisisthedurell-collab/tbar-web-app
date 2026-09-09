@@ -142,6 +142,7 @@ def main():
         metadata=metadata,
         depth_m=series.depth_m,
         resistance_series=series.qnt_mpa,
+        su_kpa=series.su_kpa,
         elapsed_s=series.elapsed_s,
         depth_scale=PlotAxisScale(),
         time_scale=PlotAxisScale(),
@@ -159,6 +160,7 @@ def main():
         metadata=metadata,
         depth_m=series.depth_m,
         resistance_series=series.qnt_mpa,
+        su_kpa=series.su_kpa,
         elapsed_s=series.elapsed_s,
         depth_scale=PlotAxisScale(),
         time_scale=PlotAxisScale(),
@@ -179,6 +181,7 @@ def main():
         metadata=metadata,
         depth_m=series.depth_m,
         resistance_series=series.qnt_mpa,
+        su_kpa=series.su_kpa,
         elapsed_s=series.elapsed_s,
         depth_scale=PlotAxisScale(),
         time_scale=PlotAxisScale(),
@@ -192,8 +195,8 @@ def main():
     import fitz  # PyMuPDF
 
     doc = fitz.open(OUTPUT_PDF)
-    # Page 1: main report (metadata + Depth/Time plots). Page 2: full-width
-    # Penetration QA plot.
+    # Page 1: main report (Depth + Initial Push/Retraction Su plots).
+    # Page 2: Time + QA plots.
     assert doc.page_count == 2, doc.page_count
 
     for page in doc:
@@ -221,11 +224,11 @@ def main():
 
     images = doc[0].get_images()
     assert len(images) == 2, f"Expected 2 embedded plot images on page 1, found {len(images)}"
-    qa_images = doc[1].get_images()
-    assert len(qa_images) == 1, f"Expected 1 embedded plot image on page 2, found {len(qa_images)}"
+    page2_images = doc[1].get_images()
+    assert len(page2_images) == 2, f"Expected 2 embedded plot images on page 2, found {len(page2_images)}"
 
     doc.close()
-    print("[OK] pdf validation: no editable form fields, fixed text present, 2 pages / 3 plot images found")
+    print("[OK] pdf validation: no editable form fields, fixed text present, 2 pages / 4 plot images found")
 
     # ---- Excel workbook builder (auditable, formula-driven QA export) --
     build_excel(

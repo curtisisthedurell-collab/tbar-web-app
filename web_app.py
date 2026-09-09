@@ -40,12 +40,13 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
 import streamlit as st
 
 from rdf_parser import parse_cdf_bytes
-from tbr_calc import CalibrationSettings, compute_series
+from tbr_calc import CalibrationSettings, compute_series, initial_withdrawal_end_index
 from tbar_excel import build_excel
-from tbar_pdf import PlotAxisScale, ReportMetadata, build_pdf
+from tbar_pdf import DEPTH_TICK_STEP_M, PlotAxisScale, ReportMetadata, build_pdf
 from tbar_plotting import plot_series_by_cycle
 
 APP_TITLE = "Mini T-Bar Processing Tool"
@@ -231,13 +232,16 @@ def read_report_metadata(
 
 def build_pdf_bytes(metadata, series, values, depth_scale, time_scale, qa_scale,
                      single_color=None, highlight_last_n_cycles=None,
-                     highlight_color="#ff0000") -> bytes:
+                     highlight_color="#ff0000",
+                     depth_linewidth=1.3, initial_su_linewidth=1.3,
+                     time_linewidth=1.3, qa_linewidth=1.3) -> bytes:
     buf = io.BytesIO()
     build_pdf(
         output_path=buf,
         metadata=metadata,
         depth_m=series.depth_m,
         resistance_series=values,
+        su_kpa=series.su_kpa,
         elapsed_s=series.elapsed_s,
         depth_scale=depth_scale,
         time_scale=time_scale,
@@ -246,6 +250,10 @@ def build_pdf_bytes(metadata, series, values, depth_scale, time_scale, qa_scale,
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
         highlight_color=highlight_color,
+        depth_linewidth=depth_linewidth,
+        initial_su_linewidth=initial_su_linewidth,
+        time_linewidth=time_linewidth,
+        qa_linewidth=qa_linewidth,
     )
     return buf.getvalue()
 
@@ -283,10 +291,12 @@ def render_plot(container, x_values, y_values, cycles, xlabel, ylabel, title,
                 scale: PlotAxisScale, invert_y: bool, legend_kwargs=None,
                 single_color: Optional[str] = None,
                 highlight_last_n_cycles: Optional[int] = None,
-                highlight_color: str = "#ff0000") -> None:
+                highlight_color: str = "#ff0000",
+                y_tick_step: Optional[float] = None,
+                linewidth: float = 1.2) -> None:
     fig, ax = plt.subplots(figsize=(5.2, 4.3), dpi=130)
     _lkw = legend_kwargs if legend_kwargs is not None else {}
-    plot_series_by_cycle(ax, x_values, y_values, cycles, linewidth=1.2,
+    plot_series_by_cycle(ax, x_values, y_values, cycles, linewidth=linewidth,
                          show_legend=True, legend_kwargs=_lkw,
                          single_color=single_color,
                          highlight_last_n_cycles=highlight_last_n_cycles,
@@ -294,6 +304,8 @@ def render_plot(container, x_values, y_values, cycles, xlabel, ylabel, title,
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
+    if y_tick_step:
+        ax.yaxis.set_major_locator(MultipleLocator(y_tick_step))
     _style_axes(ax)
     if not scale.x_auto and scale.x_min is not None and scale.x_max is not None:
         ax.set_xlim(scale.x_min, scale.x_max)
@@ -419,6 +431,28 @@ with st.sidebar:
             key="highlight_last_n_cycles",
         )
     st.divider()
+    st.subheader("Line thickness")
+    st.caption(
+        "Thinner lines can make a busy, high-cycle-count plot easier to "
+        "read. Applies to both the previews below and the PDF report."
+    )
+    lw_depth = st.number_input(
+        "Depth plot", min_value=0.3, max_value=4.0, value=1.3, step=0.1,
+        key="lw_depth",
+    )
+    lw_initial_su = st.number_input(
+        "Initial Su plot", min_value=0.3, max_value=4.0, value=1.3, step=0.1,
+        key="lw_initial_su",
+    )
+    lw_time = st.number_input(
+        "Time plot", min_value=0.3, max_value=4.0, value=1.3, step=0.1,
+        key="lw_time",
+    )
+    lw_qa = st.number_input(
+        "Depth vs Data Record (QA plot)", min_value=0.3, max_value=4.0,
+        value=1.3, step=0.1, key="lw_qa",
+    )
+    st.divider()
     st.subheader("Axis scales")
     with st.expander("Depth plot"):
         st.caption("X: resistance  |  Y: depth (inverted)")
@@ -540,11 +574,29 @@ render_plot(plot_col_1, values, series.depth_m, series.cycles,
             res_label, "Depth (m)", f"{_title_label} vs Depth",
             depth_scale, invert_y=True, single_color=trace_color,
             highlight_last_n_cycles=highlight_last_n_cycles,
-            highlight_color=highlight_color)
+            highlight_color=highlight_color, y_tick_step=DEPTH_TICK_STEP_M,
+            linewidth=lw_depth)
 render_plot(plot_col_2, series.elapsed_s, values, series.cycles,
             "Time (s)", res_label, f"{_title_label} vs Time",
             time_scale, invert_y=False,
-            legend_kwargs=dict(loc="upper right"), single_color=trace_color)
+            legend_kwargs=dict(loc="upper right"), single_color=trace_color,
+            linewidth=lw_time)
+
+plot_col_3, plot_col_4 = st.columns(2)
+initial_end_idx = initial_withdrawal_end_index(series.depth_m, series.cycles)
+initial_depth = series.depth_m[:initial_end_idx + 1]
+initial_su = series.su_kpa[:initial_end_idx + 1]
+record_idx = list(range(len(series.depth_m)))
+render_plot(plot_col_3, initial_su, initial_depth, [],
+            "Su (kPa)", "Depth (m)", "Initial Push and Retraction Su vs Depth",
+            PlotAxisScale(), invert_y=True, y_tick_step=DEPTH_TICK_STEP_M,
+            single_color=trace_color or "#1f4e79",
+            linewidth=lw_initial_su)
+render_plot(plot_col_4, record_idx, series.depth_m, series.cycles,
+            "Data Record #", "Depth (m)", "Depth vs Data Record",
+            qa_scale, invert_y=True, y_tick_step=DEPTH_TICK_STEP_M,
+            single_color=trace_color,
+            linewidth=lw_qa)
 
 # ---- Exports ----------------------------------------------------------------
 _company_logo = company_logo_file.getvalue() if company_logo_file is not None else _DEFAULT_COMPANY_LOGO
@@ -568,6 +620,10 @@ try:
         single_color=trace_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
         highlight_color=highlight_color,
+        depth_linewidth=lw_depth,
+        initial_su_linewidth=lw_initial_su,
+        time_linewidth=lw_time,
+        qa_linewidth=lw_qa,
     )
 except Exception as exc:
     st.error(f"PDF export failed: {exc}")

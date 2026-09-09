@@ -11,8 +11,9 @@ data:
    header section and stay fully editable.
 3. Two live previews — (qnT-bar or Su) vs Depth and vs Time — colour-coded
    Initial / Cycle N / Final, with per-axis auto/min/max scale controls.
-4. Download the landscape **PDF lab report** (plus a Penetration QA page)
-   and the auditable live-formula **Excel workbook**.
+4. Download the landscape **PDF lab report** — four plots across two pages
+   (Depth, Initial Push and Retraction Su, Time, and a Depth-vs-Data-Record
+   encoder QA plot) — and the auditable live-formula **Excel workbook**.
 
 **Privacy model:** uploads are parsed entirely in memory; nothing is written
 to the server disk and nothing persists between sessions. Access is gated by

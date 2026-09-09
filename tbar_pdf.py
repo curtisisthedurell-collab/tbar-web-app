@@ -28,6 +28,9 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless rendering backend for PDF export
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MultipleLocator
+
+DEPTH_TICK_STEP_M = 0.05
 
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import mm
@@ -35,7 +38,7 @@ from reportlab.lib.colors import black, white, HexColor
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdfcanvas
 
-from tbr_calc import CycleSegment
+from tbr_calc import CycleSegment, initial_withdrawal_end_index
 from tbar_plotting import plot_series_by_cycle
 
 
@@ -117,12 +120,13 @@ def _render_resistance_depth_png(
     single_color: Optional[str] = None,
     highlight_last_n_cycles: Optional[int] = None,
     highlight_color: str = "#ff0000",
+    linewidth: float = 1.3,
 ) -> bytes:
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
     plot_series_by_cycle(
         ax, resistance_series, depth_m, cycles or [],
-        linewidth=1.3, show_legend=True,
+        linewidth=linewidth, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="best", framealpha=0.92),
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
@@ -133,6 +137,7 @@ def _render_resistance_depth_png(
     _title_label = re.sub(r'\s*\([^)]*\)', '', resistance_label).strip()
     ax.set_title(f"{_title_label} vs Depth", fontsize=10.5, pad=8)
     ax.invert_yaxis()  # depth increases downward, geotechnical convention
+    ax.yaxis.set_major_locator(MultipleLocator(DEPTH_TICK_STEP_M))
     _style_axes(ax)
 
     if not scale.x_auto and scale.x_min is not None and scale.x_max is not None:
@@ -141,6 +146,48 @@ def _render_resistance_depth_png(
         # y-axis is inverted for depth; pass (max, min) so "min" stays at
         # the bottom visually only if user intends that -- we honour the
         # literal values requested, then re-apply inversion ordering.
+        lo, hi = sorted((scale.y_min, scale.y_max))
+        ax.set_ylim(hi, lo)
+
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def _render_initial_su_depth_png(
+    depth_m: Sequence[float],
+    su_kpa: Sequence[float],
+    scale: PlotAxisScale,
+    width_in: float,
+    height_in: float,
+    single_color: str = "#1f4e79",
+    linewidth: float = 1.3,
+) -> bytes:
+    """Su vs Depth for the initial push and first withdrawal only, cut off
+    before the first remolding cycle begins -- so the intact (peak) Su at
+    the start of the test reads cleanly, without the cyclic trace that
+    follows overlapping it. Always plotted in Su regardless of which series
+    (qn,T-bar or Su) the rest of the report displays, since Su is the
+    conventional quantity for reporting initial undrained shear strength."""
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
+    fig.patch.set_facecolor("white")
+    plot_series_by_cycle(
+        ax, su_kpa, depth_m, [],
+        linewidth=linewidth, show_legend=False,
+        single_color=single_color,
+    )
+    ax.set_xlabel("Su (kPa)")
+    ax.set_ylabel("Depth (m)")
+    ax.set_title("Initial Push and Retraction Su vs Depth", fontsize=10.5, pad=8)
+    ax.invert_yaxis()  # depth increases downward, geotechnical convention
+    ax.yaxis.set_major_locator(MultipleLocator(DEPTH_TICK_STEP_M))
+    _style_axes(ax)
+
+    if not scale.x_auto and scale.x_min is not None and scale.x_max is not None:
+        ax.set_xlim(scale.x_min, scale.x_max)
+    if not scale.y_auto and scale.y_min is not None and scale.y_max is not None:
         lo, hi = sorted((scale.y_min, scale.y_max))
         ax.set_ylim(hi, lo)
 
@@ -231,6 +278,34 @@ def _draw_footer_logo(
         pass
 
 
+def _draw_plot_pair(
+    c: pdfcanvas.Canvas,
+    img_left: ImageReader,
+    img_right: ImageReader,
+    margin: float,
+    plots_bottom: float,
+    plot_w: float,
+    plot_h: float,
+) -> None:
+    """Draw two side-by-side bordered plot images -- the shared two-up
+    layout used on both report pages."""
+    c.setStrokeColor(RULE_GRAY)
+    c.setLineWidth(0.6)
+    c.roundRect(margin - 4, plots_bottom - 4, plot_w + 8, plot_h + 8, 4, fill=0, stroke=1)
+    c.roundRect(
+        margin + plot_w + 10 - 4, plots_bottom - 4, plot_w + 8, plot_h + 8, 4,
+        fill=0, stroke=1,
+    )
+    c.drawImage(
+        img_left, margin, plots_bottom, width=plot_w, height=plot_h,
+        preserveAspectRatio=False, anchor="sw",
+    )
+    c.drawImage(
+        img_right, margin + plot_w + 10, plots_bottom, width=plot_w, height=plot_h,
+        preserveAspectRatio=False, anchor="sw",
+    )
+
+
 def _render_resistance_time_png(
     elapsed_s: Sequence[Optional[float]],
     resistance_series: Sequence[float],
@@ -242,12 +317,13 @@ def _render_resistance_time_png(
     single_color: Optional[str] = None,
     highlight_last_n_cycles: Optional[int] = None,
     highlight_color: str = "#ff0000",
+    linewidth: float = 1.3,
 ) -> bytes:
     fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=220)
     fig.patch.set_facecolor("white")
     plot_series_by_cycle(
         ax, elapsed_s, resistance_series, cycles or [],
-        linewidth=1.3, show_legend=True,
+        linewidth=linewidth, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="upper right", framealpha=0.92),
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
@@ -280,6 +356,7 @@ def _render_depth_time_png(
     single_color: Optional[str] = None,
     highlight_last_n_cycles: Optional[int] = None,
     highlight_color: str = "#ff0000",
+    linewidth: float = 1.3,
 ) -> bytes:
     """Depth (inverted y-axis) vs data record number.
 
@@ -297,7 +374,7 @@ def _render_depth_time_png(
     fig.patch.set_facecolor("white")
     plot_series_by_cycle(
         ax, record_idx, depth_m, cycles or [],
-        linewidth=1.3, show_legend=True,
+        linewidth=linewidth, show_legend=True,
         legend_kwargs=dict(fontsize=6.5, loc="best", framealpha=0.92),
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
@@ -306,6 +383,7 @@ def _render_depth_time_png(
     ax.set_xlabel("Data Record #")
     ax.set_ylabel("Depth (m)")
     ax.set_title("Depth vs Data Record", fontsize=10.5, pad=8)
+    ax.yaxis.set_major_locator(MultipleLocator(DEPTH_TICK_STEP_M))
     _style_axes(ax)
 
     if not scale.x_auto and scale.x_min is not None and scale.x_max is not None:
@@ -331,6 +409,7 @@ def build_pdf(
     metadata: ReportMetadata,
     depth_m: Sequence[float],
     resistance_series: Sequence[float],
+    su_kpa: Sequence[float],
     elapsed_s: Sequence[Optional[float]],
     depth_scale: PlotAxisScale,
     time_scale: PlotAxisScale,
@@ -339,24 +418,45 @@ def build_pdf(
     single_color: Optional[str] = None,
     highlight_last_n_cycles: Optional[int] = None,
     highlight_color: str = "#ff0000",
+    depth_linewidth: float = 1.3,
+    initial_su_linewidth: float = 1.3,
+    time_linewidth: float = 1.3,
+    qa_linewidth: float = 1.3,
 ) -> None:
     """Build the landscape mini T-bar report PDF at ``output_path``.
 
+    Four plots across two pages:
+      Page 1: (qn,T-bar or Su) vs Depth -- the full test -- alongside
+              Initial Push and Retraction Su vs Depth -- the initial push
+              and the withdrawal immediately after it, cut off before the
+              first remolding cycle, so the intact/peak Su is easy to read
+              in isolation.
+      Page 2: (qn,T-bar or Su) vs Time, alongside Depth vs Data Record (the
+              encoder QA plot).
+
     ``resistance_series`` is whichever series the GUI currently has
     selected for plotting (qn,T-bar or Su); ``metadata.resistance_label``
-    supplies the matching axis label/title text. ``cycles`` (see
-    :func:`tbr_calc.detect_cycles`) drives the color-coded Initial/Cycle
-    N/Final segments and legend on both plots, unless ``single_color`` is
-    given, in which case every plot (including the page 2 QA plot) is drawn
-    as one uniform-color trace with no legend instead. If
+    supplies the matching axis label/title text. ``su_kpa`` is always the
+    Su series regardless of that selection -- it feeds only the Initial
+    Push and Retraction Su vs Depth plot, since Su (not qn,T-bar) is the
+    conventional quantity for reporting initial undrained shear strength.
+    ``cycles`` (see :func:`tbr_calc.detect_cycles`) drives the color-coded
+    Initial/Cycle N/Final segments and legend on the main depth/time plots,
+    unless ``single_color`` is given, in which case every plot (including
+    the QA plot) is drawn as one uniform-color trace with no legend instead
+    (the Initial Push and Retraction plot is always a plain single-color
+    trace, since it never spans more than one cycle boundary). If
     ``highlight_last_n_cycles`` is also given, it applies only to the
     resistance-vs-depth plot: that trace is drawn in ``single_color`` with
-    only the last N remolding cycles redrawn on top in ``highlight_color``
-    for at-a-glance peak/remolded comparison; the resistance-vs-time and QA
-    plots stay a solid ``single_color`` trace. ``qa_scale`` sets the axis
-    limits for the page 2 Depth vs Data Record QA plot (defaults to fully
-    automatic if omitted). The PDF is a fixed lab record: all metadata is
-    drawn as plain text, not editable form fields.
+    only the last N remolding cycles
+    redrawn on top in ``highlight_color`` for at-a-glance peak/remolded
+    comparison; the other plots stay a solid ``single_color`` trace.
+    ``qa_scale`` sets the axis limits for the Depth vs Data Record QA plot
+    (defaults to fully automatic if omitted). ``depth_linewidth``,
+    ``initial_su_linewidth``, ``time_linewidth`` and ``qa_linewidth`` set
+    each plot's trace width independently, so a busy high-cycle-count test
+    can be thinned out for readability. The PDF is a fixed lab record: all
+    metadata is drawn as plain text, not editable form fields.
     """
     if qa_scale is None:
         qa_scale = PlotAxisScale()
@@ -441,39 +541,30 @@ def build_pdf(
     plot_w = (page_w - 2 * margin - 10) / 2.0
     plot_h = plot_area_h
 
+    initial_end_idx = initial_withdrawal_end_index(depth_m, cycles or [])
+    initial_depth = list(depth_m)[:initial_end_idx + 1]
+    initial_su = list(su_kpa)[:initial_end_idx + 1]
+
     depth_png = _render_resistance_depth_png(
         depth_m, resistance_series, metadata.resistance_label, depth_scale,
         width_in=plot_w / 72.0, height_in=plot_h / 72.0, cycles=cycles,
         single_color=single_color,
         highlight_last_n_cycles=highlight_last_n_cycles,
         highlight_color=highlight_color,
+        linewidth=depth_linewidth,
     )
-    time_png = _render_resistance_time_png(
-        elapsed_s, resistance_series, metadata.resistance_label, time_scale,
-        width_in=plot_w / 72.0, height_in=plot_h / 72.0, cycles=cycles,
-        single_color=single_color,
+    initial_su_png = _render_initial_su_depth_png(
+        initial_depth, initial_su, PlotAxisScale(),
+        width_in=plot_w / 72.0, height_in=plot_h / 72.0,
+        single_color=single_color or "#1f4e79",
+        linewidth=initial_su_linewidth,
     )
 
     img1 = ImageReader(io.BytesIO(depth_png))
-    img2 = ImageReader(io.BytesIO(time_png))
+    img2 = ImageReader(io.BytesIO(initial_su_png))
 
     plots_bottom = footer_y_base + footer_h
-    c.setStrokeColor(RULE_GRAY)
-    c.setLineWidth(0.6)
-    c.roundRect(margin - 4, plots_bottom - 4, plot_w + 8, plot_h + 8, 4, fill=0, stroke=1)
-    c.roundRect(
-        margin + plot_w + 10 - 4, plots_bottom - 4, plot_w + 8, plot_h + 8, 4,
-        fill=0, stroke=1,
-    )
-
-    c.drawImage(
-        img1, margin, plots_bottom, width=plot_w, height=plot_h,
-        preserveAspectRatio=False, anchor="sw",
-    )
-    c.drawImage(
-        img2, margin + plot_w + 10, plots_bottom, width=plot_w, height=plot_h,
-        preserveAspectRatio=False, anchor="sw",
-    )
+    _draw_plot_pair(c, img1, img2, margin, plots_bottom, plot_w, plot_h)
 
     # ---- Footer ---------------------------------------------------------
     # All vertical positions are relative to footer_y_base (8 mm from page
@@ -514,8 +605,8 @@ def build_pdf(
     c.showPage()
 
     # ====================================================================
-    # Page 2: Depth Encoder QA
-    # Full-width depth-vs-record-number plot so the engineer can check the
+    # Page 2: Resistance vs Time, and Depth Encoder QA
+    # The QA plot lets the engineer check the depth-vs-record-number
     # encoder trace for slip, dropout, or non-physical reversals.
     # ====================================================================
 
@@ -546,30 +637,31 @@ def build_pdf(
     _draw_label(c, margin + 304, qa_row_y + label_offset, "Test Date")
     _draw_value(c, margin + 304, qa_row_y, metadata.test_date, 120)
 
-    # Full-width QA plot -- same footer_h as page 1 so logos align identically
+    # Two plots side by side -- same two-up layout as page 1, and the same
+    # footer_h as page 1 so logos align identically. The compact single-row
+    # metadata card above leaves more vertical room than page 1's two-row
+    # card, so these plots come out a little taller.
     qa_plot_top = qa_row_y - 30   # 30pt gap clears the card border cleanly
     qa_plot_area_h = qa_plot_top - footer_y_base - footer_h
-    qa_plot_w = page_w - 2 * margin
 
+    time_png = _render_resistance_time_png(
+        elapsed_s, resistance_series, metadata.resistance_label, time_scale,
+        width_in=plot_w / 72.0, height_in=qa_plot_area_h / 72.0, cycles=cycles,
+        single_color=single_color,
+        linewidth=time_linewidth,
+    )
     qa_png = _render_depth_time_png(
         depth_m, qa_scale,
-        width_in=qa_plot_w / 72.0,
+        width_in=plot_w / 72.0,
         height_in=qa_plot_area_h / 72.0,
         cycles=cycles,
         single_color=single_color,
+        linewidth=qa_linewidth,
     )
+    time_img = ImageReader(io.BytesIO(time_png))
     qa_img = ImageReader(io.BytesIO(qa_png))
     qa_plots_bottom = footer_y_base + footer_h
-    c.setStrokeColor(RULE_GRAY)
-    c.setLineWidth(0.6)
-    c.roundRect(
-        margin - 4, qa_plots_bottom - 4, qa_plot_w + 8, qa_plot_area_h + 8,
-        4, fill=0, stroke=1,
-    )
-    c.drawImage(
-        qa_img, margin, qa_plots_bottom, width=qa_plot_w, height=qa_plot_area_h,
-        preserveAspectRatio=False, anchor="sw",
-    )
+    _draw_plot_pair(c, time_img, qa_img, margin, qa_plots_bottom, plot_w, qa_plot_area_h)
 
     # Page 2 footer -- logos (same positions as page 1) + rule + text
     if has_logos:

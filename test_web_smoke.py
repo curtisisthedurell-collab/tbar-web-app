@@ -103,6 +103,7 @@ def check_exports_via_streams(sample_path: str) -> None:
         metadata=metadata,
         depth_m=series.depth_m,
         resistance_series=series.qnt_mpa,
+        su_kpa=series.su_kpa,
         elapsed_s=series.elapsed_s,
         depth_scale=PlotAxisScale(),
         time_scale=PlotAxisScale(),

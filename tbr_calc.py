@@ -227,6 +227,42 @@ def detect_cycles(
     return segments
 
 
+def initial_withdrawal_end_index(
+    depth_m: Sequence[float], cycles: Sequence[CycleSegment]
+) -> int:
+    """Index marking the end of the initial push + first withdrawal -- the
+    turning point where the first remolding push-down begins, or the last
+    sample if the test never gets that far (a single push, or a push and
+    one withdrawal with no further cycling).
+
+    Used to isolate the "virgin" (un-remolded) portion of a cyclic test --
+    the initial penetration and the pull-back immediately after it -- from
+    the remolding cycles that follow, so the initial (peak) Su reads
+    cleanly on its own without the cyclic trace overlapping it.
+    """
+    n = len(depth_m)
+    if not cycles:
+        return max(n - 1, 0)
+    if len(cycles) == 1:
+        return cycles[0].end_idx
+
+    second = cycles[1]
+    if second.kind != "cycle":
+        # Initial push + Final withdrawal only (no remolding cycles) --
+        # Final *is* exactly the first withdrawal in this case.
+        return second.end_idx
+
+    # "Cycle 1" bundles the first withdrawal together with the push-down
+    # that follows it, so isolate the withdrawal-only portion by finding
+    # the shallowest point within it -- the turning point where the
+    # withdrawal ends and the next push begins.
+    lo, hi = second.start_idx, min(second.end_idx, n - 1)
+    if lo >= hi:
+        return lo
+    window = depth_m[lo:hi + 1]
+    return lo + window.index(min(window))
+
+
 def compute_elapsed_seconds(timestamps) -> List[Optional[float]]:
     """Elapsed time [s] from the first valid timestamp; None for missing.
 
