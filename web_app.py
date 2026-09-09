@@ -388,6 +388,7 @@ with st.sidebar:
     color_mode = st.radio(
         "Trace colour mode",
         ["Cycle-colour-coded", "Single colour", "Highlight last N cycles"],
+        index=2,
         key="trace_color_mode",
         label_visibility="collapsed",
         help="Cycle-colour-coded gives every cycle its own colour (can "
@@ -550,6 +551,15 @@ _company_logo = company_logo_file.getvalue() if company_logo_file is not None el
 _client_logo = client_logo_file.getvalue() if client_logo_file is not None else _DEFAULT_CLIENT_LOGO
 metadata = read_report_metadata(res_label, _company_logo, _client_logo)
 
+# Placeholders are filled with a disabled button *before* the (slow) PDF/Excel
+# generation below, so a stale download button from the previous run's edited
+# fields cannot stay on screen -- and clickable -- while this run recomputes.
+dl1, dl2 = st.columns(2)
+pdf_slot = dl1.empty()
+xlsx_slot = dl2.empty()
+pdf_slot.button("⬇️ Export PDF report", disabled=True, use_container_width=True)
+xlsx_slot.button("⬇️ Export Excel workbook (.xlsx)", disabled=True, use_container_width=True)
+
 pdf_bytes = b""
 xlsx_bytes = b""
 try:
@@ -570,8 +580,7 @@ safe_name = "".join(
     ch for ch in metadata.location_id.strip() if ch not in '\\/:*?"<>|'
 ).strip() or "tbar_report"
 
-dl1, dl2 = st.columns(2)
-dl1.download_button(
+pdf_slot.download_button(
     "⬇️ Export PDF report",
     data=pdf_bytes,
     file_name=f"{safe_name}.pdf",
@@ -579,7 +588,7 @@ dl1.download_button(
     disabled=not pdf_bytes,
     use_container_width=True,
 )
-dl2.download_button(
+xlsx_slot.download_button(
     "⬇️ Export Excel workbook (.xlsx)",
     data=xlsx_bytes,
     file_name=f"{safe_name}.xlsx",
